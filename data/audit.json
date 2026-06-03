@@ -1,0 +1,10 @@
+[
+    {
+       "action": "user_created",
+       "user_id": 2,
+       "time": "2026-06-03T16:15:55.75490384+05:00",
+       "user_name": "Ali",
+       "user_age": 20
+    }
+ ]
+ 
