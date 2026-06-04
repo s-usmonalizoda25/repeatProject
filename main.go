@@ -1,36 +1,73 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+	"sync"
 	"project/handlers"
+	"project/internal/consumer"
 	"project/internal/repository"
 	"project/internal/service"
+	"project/internal/service/eventBus"
+	"project/middleware"
 	"project/pkg/logger"
-	"project/router"
 )
+
 func main() {
 	loggy, err := logger.New(true)
 	if err != nil {
-		log.Fatal("Не удалось создать логгер:", err)
+		log.Fatal("Failed to create logger", err)
 	}
 
-	auditRepo:=repository.NewAuditRepo("data/audit.json")
-	auditService:=service.NewAuditService(auditRepo)
+	bus := eventBus.NewBus(100)
 
-	userRepo := repository.New("data/users.json")
-	userService := service.New(userRepo, auditService)
+	ctx, cancel := context.WithCancel(context.Background())
+
+
+	var wg sync.WaitGroup
+	consumer.StartAuditConsumer(ctx, &wg, bus, loggy)
+
+	const fileName = "data/users.json"
+	userRepo := repository.New(fileName)
+	userService := service.New(userRepo, bus)
 	userHandler := handlers.New(loggy, userService)
 
 
-	mux:=router.New(userHandler)
+	mux := http.NewServeMux()
+	mux.Handle("GET /users", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.GetAll))))
+	mux.Handle("POST /user", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.Create))))
+	mux.Handle("PUT /user", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.Update))))
+	mux.Handle("GET /user/{id}", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.GetByID))))
 
 
-	loggy.Info("Сервер успешно запущен на порту :8080. Ожидание запросов...")
-	err = http.ListenAndServe(":8080", mux)
-	if err != nil {
-		log.Fatal("Критическая ошибка при работе сервера:", err)
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
 	}
+
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		<-sigChan
+		loggy.Info("Получен сигнал остановки сервера. Завершаем работу...")
+		cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			loggy.Error("Ошибка при остановке сервера: " + err.Error())
+		}
+	}()
+
+	loggy.Info("Сервер успешно запущен на порту :8080...")
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatal("Failed to start server: ", err)
+	}
+	wg.Wait()
+	loggy.Info("Все фоновые задачи завершены. Программа успешно закрыта.")
 }
-
-

@@ -47,7 +47,7 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ищем юзера через сервис
-	userResp, err := h.userService.GetById(r.Context(), id)
+	userResp, err := h.userService.GetByID(r.Context(), id)
 	if err != nil {
 		switch {
 		case errors.Is(err, errs.ErrValidation):
