@@ -6,16 +6,18 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
-	"time"
-	"sync"
 	"project/handlers"
 	"project/internal/consumer"
+	"project/internal/rate_limiter"
 	"project/internal/repository"
 	"project/internal/service"
 	"project/internal/service/eventBus"
 	"project/middleware"
 	"project/pkg/logger"
+	"sync"
+	"syscall"
+	"time"
+	"project/router"
 )
 
 func main() {
@@ -32,6 +34,10 @@ func main() {
 	var wg sync.WaitGroup
 	consumer.StartAuditConsumer(ctx, &wg, bus, loggy)
 
+
+	rl:=ratelimiter.New()
+	go rl.WorkerClear()
+
 	const fileName = "data/users.json"
 	userRepo := repository.New(fileName)
 	userService := service.New(userRepo, bus)
@@ -44,12 +50,17 @@ func main() {
 	mux.Handle("PUT /user", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.Update))))
 	mux.Handle("GET /user/{id}", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.GetByID))))
 
-
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
 	}
 
+	siteHandler := router.New(userHandler, rl)
+
+	server=&http.Server{
+		Addr:    ":8080",
+		Handler: siteHandler,
+	}
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
