@@ -2,74 +2,69 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
 	"project/handlers"
 	"project/internal/consumer"
 	"project/internal/rate_limiter"
 	"project/internal/repository"
 	"project/internal/service"
 	"project/internal/service/eventBus"
-	"project/middleware"
 	"project/pkg/logger"
-	"sync"
-	"syscall"
-	"time"
 	"project/router"
 )
 
 func main() {
 	loggy, err := logger.New(true)
 	if err != nil {
-		log.Fatal("Failed to create logger", err)
+		return
 	}
+	defer loggy.Sync()
 
 	bus := eventBus.NewBus(100)
+	defer bus.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-
 	var wg sync.WaitGroup
-	consumer.StartAuditConsumer(ctx, &wg, bus, loggy)
 
+	const userFileName = "data/users.json"
+	const auditFileName = "data/audit.json"
 
-	rl:=ratelimiter.New()
-	go rl.WorkerClear()
+	auditRepo := repository.NewAuditRepo(auditFileName)
+	auditService := service.NewAuditService(auditRepo)
 
-	const fileName = "data/users.json"
-	userRepo := repository.New(fileName)
-	userService := service.New(userRepo, bus)
+	consumer.StartAuditConsumer(ctx, &wg, bus, loggy, auditService)
+
+	rl := rate_limiter.New()
+	go rl.WorkerClear(ctx, &wg)
+
+	userRepo := repository.New(userFileName)
+	userService := service.New(userRepo)
 	userHandler := handlers.New(loggy, userService)
 
-
-	mux := http.NewServeMux()
-	mux.Handle("GET /users", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.GetAll))))
-	mux.Handle("POST /user", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.Create))))
-	mux.Handle("PUT /user", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.Update))))
-	mux.Handle("GET /user/{id}", middleware.Logging(middleware.Auth(http.HandlerFunc(userHandler.GetByID))))
+	siteHandler := router.New(userHandler, rl, loggy)
 
 	server := &http.Server{
 		Addr:    ":8080",
-		Handler: mux,
-	}
-
-	siteHandler := router.New(userHandler, rl)
-
-	server=&http.Server{
-		Addr:    ":8080",
 		Handler: siteHandler,
 	}
+
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		<-sigChan
-		loggy.Info("Получен сигнал остановки сервера. Завершаем работу...")
+
+		loggy.Info("Получен сигнал остановки. Завершаем работу сервера...")
 		cancel()
+
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		
+
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			loggy.Error("Ошибка при остановке сервера: " + err.Error())
 		}
@@ -77,8 +72,9 @@ func main() {
 
 	loggy.Info("Сервер успешно запущен на порту :8080...")
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatal("Failed to start server: ", err)
+		loggy.Fatal("Ошибка запуска сервера: " + err.Error())
 	}
+
 	wg.Wait()
-	loggy.Info("Все фоновые задачи завершены. Программа успешно закрыта.")
+	loggy.Info("Все фоновые задачи успешно завершены. Программа закрыта.")
 }

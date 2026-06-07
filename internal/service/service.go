@@ -2,72 +2,74 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"project/internal/models"
 	"project/internal/repository"
-	"project/internal/service/eventBus"
 	"project/pkg/errs"
 )
 
 type UserService struct {
 	repo *repository.UserRepo
-	bus  *eventBus.Bus
 }
 
-func New(repo *repository.UserRepo, bus *eventBus.Bus) *UserService {
+func New(repo *repository.UserRepo) *UserService {
 	return &UserService{
 		repo: repo,
-		bus:  bus,
 	}
 }
 
-func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
-	users, err := s.repo.GetAll(ctx)
+func (s *UserService) CleanGetAll(ctx context.Context) ([]models.User, error) {
+	allUsers, err := s.repo.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("s.repo.GetAll: %w", err)
 	}
 
-	s.bus.Publish(eventBus.Event{
-		Type:   "Get all users",
-		UserID: 10,
-	})
+	var activeUsers []models.User
+	for _, u := range allUsers {
+		if u.IsActive {
+			activeUsers = append(activeUsers, u)
+		}
+	}
 
+	return activeUsers, nil
+}
+
+func (s *UserService) GetAllArchive(ctx context.Context) ([]models.User, error) {
+	users, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("s.repo.GetAll archive: %w", err)
+	}
 	return users, nil
+}
+
+func (s *UserService) Login(ctx context.Context, name, password string) error {
+	if name == "" || password == "" {
+		return errs.ErrValidation
+	}
+
+	user, err := s.repo.GetByName(ctx, name)
+	if err != nil {
+		return errs.ErrUserNotFound
+	}
+
+	if user.Password != password {
+		return errors.New("invalid password")
+	}
+
+	return nil
 }
 
 func (s *UserService) Create(ctx context.Context, user *models.User) error {
 	if err := user.Validate(); err != nil {
-		return errs.ErrValidation
+		return err
 	}
 
 	err := s.repo.Create(ctx, *user)
 	if err != nil {
 		return fmt.Errorf("s.repo.Create: %w", err)
 	}
-
-	s.bus.Publish(eventBus.Event{
-		Type:   "Created User",
-		UserID: user.ID,
-	})
-
-	return nil
-}
-
-func (s *UserService) Update(ctx context.Context, user *models.User) error {
-	if err := user.Validate(); err != nil {
-		return errs.ErrValidation
-	}
-	
-	err := s.repo.Update(ctx, *user)
-	if err != nil {
-		return fmt.Errorf("s.repo.Update: %w", err)
-	}
-
-	s.bus.Publish(eventBus.Event{
-		Type:   "Updated User",
-		UserID: user.ID,
-	})
 
 	return nil
 }
@@ -76,5 +78,26 @@ func (s *UserService) GetByID(ctx context.Context, id int) (*models.User, error)
 	if id <= 0 {
 		return nil, errs.ErrValidation
 	}
-	return s.repo.GetById(ctx, id)
+	return s.repo.GetByID(ctx, id)
+}
+
+func (s *UserService) Update(ctx context.Context, user *models.User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+
+	err := s.repo.Update(ctx, *user)
+	if err != nil {
+		return fmt.Errorf("s.repo.Update: %w", err)
+	}
+
+	return nil
+}
+
+func (s *UserService) SoftDelete(ctx context.Context, id int) error {
+	if id <= 0 {
+		return errs.ErrValidation
+	}
+
+	return s.repo.SoftDelete(ctx, id)
 }

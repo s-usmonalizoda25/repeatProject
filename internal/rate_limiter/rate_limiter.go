@@ -1,69 +1,71 @@
-package ratelimiter
+package rate_limiter
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
 )
 
-type RateLimiter struct{
- mu sync.Mutex
- requests map[int]RequestUserInfo
+var ErrLimitExceeded = errors.New("rate limit exceeded")
+
+type RequestUserInfo struct {
+	Count       int
+	RequestedAt time.Time
 }
 
-type RequestUserInfo struct{
- Counter int
- RequestedAt time.Time
+type RateLimiter struct {
+	mu       sync.Mutex
+	requests map[string]RequestUserInfo
 }
 
-func New() *RateLimiter{
- return &RateLimiter{
-  mu: sync.Mutex{},
-  requests: make(map[int]RequestUserInfo),
- }
+func New() *RateLimiter {
+	return &RateLimiter{
+		requests: make(map[string]RequestUserInfo),
+	}
 }
-
-func(rl *RateLimiter) Allow(id int) (bool, error){
+func (rl *RateLimiter) Allow(key string) (bool, error) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	info, exist:=rl.requests[id]
-	now:=time.Now()
-	if !exist{
-		rl.requests[id] = RequestUserInfo{
-			Counter: 1,
+
+	now := time.Now()
+	info, exists := rl.requests[key]
+
+	if !exists || now.Sub(info.RequestedAt) >= 1*time.Minute {
+		rl.requests[key] = RequestUserInfo{
+			Count:       1,
 			RequestedAt: now,
 		}
 		return true, nil
 	}
 
-	if now.Sub(info.RequestedAt)>=time.Minute*1{
-		rl.requests[id]=RequestUserInfo{
-			Counter: 1,
-			RequestedAt: now,
-		}
-		return true, nil
+	if info.Count >= 5 {
+		return false, ErrLimitExceeded
 	}
-
-
-	if info.Counter>=5{
-		return false, errors.New("limit has been exceeded")
-	}
-	info.Counter++
-	rl.requests[id]=info
+	info.Count++
+	rl.requests[key] = info
 	return true, nil
 }
+func (rl *RateLimiter) WorkerClear(ctx context.Context, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 
-func(rl *RateLimiter)WorkerClear(){
-	tick:=time.NewTicker(5*time.Second)
-	for range tick.C{
-		rl.mu.Lock()
-		now:=time.Now()	
-		for id, info:=range rl.requests{
-			if now.Sub(info.RequestedAt)>=time.Minute*1{
-				delete(rl.requests, id)
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for key, info := range rl.requests {
+				if now.Sub(info.RequestedAt) >= 1*time.Minute {
+					delete(rl.requests, key)
+				}
 			}
+			rl.mu.Unlock()
 		}
-		rl.mu.Unlock()
 	}
 }
-

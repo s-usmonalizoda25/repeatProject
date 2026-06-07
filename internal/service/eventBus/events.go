@@ -1,6 +1,6 @@
 package eventBus
 
-type Event struct{
-	Type string
+type Event struct {
+	Type   string
 	UserID int
 }

@@ -4,37 +4,40 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
+
 type Logger struct {
 	*zap.Logger
-	Audit *zap.Logger
+	audit *zap.Logger
 }
 
-func New(devMode bool) (*Logger, error) {
+func New(development bool) (*Logger, error) {
 	var cfg zap.Config
-	if devMode {
+	if development {
 		cfg = zap.NewDevelopmentConfig()
 	} else {
 		cfg = zap.NewProductionConfig()
 	}
-	cfg.EncoderConfig.TimeKey = "timestamp"
-	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	cfg.OutputPaths = []string{"stdout"}
-	mainLogger, err:=cfg.Build()
-	if err!=nil{
-		return nil, fmt.Errorf("mainLogger.Build: %w", err)
+
+	loggy, err := cfg.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build main logger: %w", err)
 	}
-	auditCfg:=zap.NewProductionConfig()
-	auditCfg.EncoderConfig.TimeKey="timestamp"
-	auditCfg.EncoderConfig.EncodeTime=zapcore.ISO8601TimeEncoder
-	auditCfg.OutputPaths=[]string{"data/auditLog.txt"}
-	auditLogger, err:=auditCfg.Build()
-	if err!=nil{
-		return nil, fmt.Errorf("auditLogger.Build:%w", err)
+
+	auditCfg := zap.NewProductionConfig()
+	auditCfg.OutputPaths = []string{"data/auditLog.txt"}
+
+	auditLoggy, err := auditCfg.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build audit logger: %w", err)
 	}
+
 	return &Logger{
-		Logger: mainLogger,
-		Audit: auditLogger,
+		Logger: loggy,
+		audit:  auditLoggy,
 	}, nil
+}
+
+func (l *Logger) AuditLogger() *zap.Logger {
+	return l.audit
 }
