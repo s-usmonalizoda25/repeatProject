@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,13 +11,17 @@ import (
 	"time"
 
 	"project/handlers"
+	"project/internal/config"
 	"project/internal/consumer"
 	"project/internal/rate_limiter"
 	"project/internal/repository"
 	"project/internal/service"
 	"project/internal/service/eventBus"
+	"project/pkg/db"
 	"project/pkg/logger"
 	"project/router"
+
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -32,7 +37,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
-	const userFileName = "data/users.json"
+	// const userFileName = "data/users.json"
 	const auditFileName = "data/audit.json"
 
 	auditRepo := repository.NewAuditRepo(auditFileName)
@@ -43,7 +48,24 @@ func main() {
 	rl := rate_limiter.New()
 	go rl.WorkerClear(ctx, &wg)
 
-	userRepo := repository.New(userFileName)
+	cfg, err := config.New("config/config.env")
+	if err != nil {
+		log.Fatal("config.New", err)
+	}
+	database, err := db.New(db.Options{
+		Host:     cfg.DBHost,
+		Port:     cfg.DBPort,
+		User:     cfg.DBUser,
+		Password: cfg.DBPassword,
+		DBName:   cfg.DBName,
+	})
+	if err != nil {
+		loggy.Fatal("db.New", zap.Error(err))
+		return
+	}
+	defer database.Close()
+
+	userRepo := repository.New(database)
 	userService := service.New(userRepo)
 	userHandler := handlers.New(loggy, userService)
 
