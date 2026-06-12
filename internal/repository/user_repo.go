@@ -66,7 +66,7 @@ func (r *userRepository) GetByID(ctx context.Context, id int) (*models.User, err
 }
 
 func (r *userRepository) GetAuthByUsername(ctx context.Context, username string) (*models.Credentials, error) {
-	const query = `SELECT id, user_id, username, password_hash FROM auth WHERE username = $1`
+	const query = `SELECT id, user_id, username, password FROM auth WHERE username = $1`
 
 	var creds models.Credentials
 	err := r.db.QueryRowContext(ctx, query, username).Scan(&creds.ID, &creds.UserID, &creds.Username, &creds.PasswordHash)
@@ -82,7 +82,7 @@ func (r *userRepository) GetAuthByUsername(ctx context.Context, username string)
 func (r *userRepository) Create(ctx context.Context, user models.User, password string) error {
 	const (
 		userQuery = `INSERT INTO users (name, age, is_active) VALUES ($1, $2, $3) RETURNING id`
-		authQuery = `INSERT INTO auth (user_id, username, password_hash) VALUES ($1, $2, $3)`
+		authQuery = `INSERT INTO auth (user_id, username, password) VALUES ($1, $2, $3)`
 	)
 
 	tx, err := r.db.BeginTx(ctx, nil)
