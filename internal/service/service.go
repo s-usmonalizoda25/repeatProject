@@ -48,7 +48,7 @@ func (s *UserService) Login(ctx context.Context, name, password string) error {
 	if name == "" || password == "" {
 		return errs.ErrValidation
 	}
-	
+
 	creds, err := s.repo.GetAuthByUsername(ctx, name)
 	if err != nil {
 		return errs.ErrUserNotFound
@@ -69,7 +69,6 @@ func (s *UserService) Create(ctx context.Context, user *models.User, password st
 		return errors.New("password cannot be empty")
 	}
 
-	
 	err := s.repo.Create(ctx, *user, password)
 	if err != nil {
 		return fmt.Errorf("s.repo.Create: %w", err)

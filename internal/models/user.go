@@ -16,7 +16,6 @@ type Credentials struct {
 	PasswordHash string `json:"password_hash"`
 }
 
-
 func (u *User) Validate() error {
 	if u.Name == "" {
 		return errors.New("name cannot be empty")

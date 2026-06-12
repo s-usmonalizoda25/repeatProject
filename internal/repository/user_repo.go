@@ -14,7 +14,7 @@ type IUserRepo interface {
 	GetAuthByUsername(ctx context.Context, username string) (*models.Credentials, error)
 	Create(ctx context.Context, user models.User, password string) error
 	Update(ctx context.Context, user models.User) error
-	SoftDelete(ctx context.Context, id int) error		
+	SoftDelete(ctx context.Context, id int) error
 }
 
 type userRepository struct {
