@@ -48,25 +48,29 @@ func (s *UserService) Login(ctx context.Context, name, password string) error {
 	if name == "" || password == "" {
 		return errs.ErrValidation
 	}
-
-	user, err := s.repo.GetByName(ctx, name)
+	
+	creds, err := s.repo.GetAuthByUsername(ctx, name)
 	if err != nil {
 		return errs.ErrUserNotFound
 	}
 
-	if user.Password != password {
+	if creds.PasswordHash != password {
 		return errors.New("invalid password")
 	}
 
 	return nil
 }
 
-func (s *UserService) Create(ctx context.Context, user *models.User) error {
+func (s *UserService) Create(ctx context.Context, user *models.User, password string) error {
 	if err := user.Validate(); err != nil {
 		return err
 	}
+	if password == "" {
+		return errors.New("password cannot be empty")
+	}
 
-	err := s.repo.Create(ctx, *user)
+	
+	err := s.repo.Create(ctx, *user, password)
 	if err != nil {
 		return fmt.Errorf("s.repo.Create: %w", err)
 	}

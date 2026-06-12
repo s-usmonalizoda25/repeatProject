@@ -31,6 +31,12 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type createUserRequest struct {
+	Name     string `json:"name"`
+	Age      int    `json:"age"`
+	Password string `json:"password"`
+}
+
 func New(logger *logger.Logger, userService *service.UserService) *UserHandler {
 	return &UserHandler{
 		logger:      logger,
@@ -136,14 +142,20 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var userRequest models.User
-	err := json.NewDecoder(r.Body).Decode(&userRequest)
+	var req createUserRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err = h.userService.Create(r.Context(), &userRequest)
+	user := models.User{
+		Name:     req.Name,
+		Age:      req.Age,
+		IsActive: true,
+	}
+
+	err = h.userService.Create(r.Context(), &user, req.Password)
 	if err != nil {
 		if errors.Is(err, errs.ErrValidation) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
