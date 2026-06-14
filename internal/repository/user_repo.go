@@ -69,7 +69,7 @@ func (r *userRepository) GetAuthByUsername(ctx context.Context, username string)
 	const query = `SELECT id, user_id, username, password FROM auth WHERE username = $1`
 
 	var creds models.Credentials
-	err := r.db.QueryRowContext(ctx, query, username).Scan(&creds.ID, &creds.UserID, &creds.Username, &creds.PasswordHash)
+	err := r.db.QueryRowContext(ctx, query, username).Scan(&creds.ID, &creds.UserID, &creds.Username, &creds.Password)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errs.ErrUserNotFound

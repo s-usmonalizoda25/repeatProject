@@ -8,12 +8,11 @@ type User struct {
 	Age      int    `json:"age"`
 	IsActive bool   `json:"is_active"`
 }
-
 type Credentials struct {
-	ID           int    `json:"id"`
-	UserID       int    `json:"user_id"`
-	Username     string `json:"username"`
-	PasswordHash string `json:"password"`
+	ID       int    `json:"id"`
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 func (u *User) Validate() error {

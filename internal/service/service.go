@@ -54,7 +54,7 @@ func (s *UserService) Login(ctx context.Context, name, password string) error {
 		return errs.ErrUserNotFound
 	}
 
-	if creds.PasswordHash != password {
+	if creds.Password!= password {
 		return errors.New("invalid password")
 	}
 
